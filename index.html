@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Battle Map Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+
+<style>
+html, body, #map { height:100%; margin:0; }
+#panel {
+  position:absolute;
+  top:10px; right:10px;
+  z-index:1000;
+  background:#fff;
+  padding:10px;
+  width:220px;
+  box-shadow:0 0 10px rgba(0,0,0,.3);
+}
+#panel button { width:100%; margin-bottom:5px; }
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <button onclick="saveAndSync()">💾 ЗБЕРЕГТИ</button>
+  <button onclick="togglePencil()">✏️ Олівець</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+<script>
+/* ================== CONFIG ================== */
+const GITHUB = {
+  owner: "YOUR_USERNAME",
+  repo: "admin-map",
+  branch: "main",
+  token: localStorage.getItem("GITHUB_TOKEN")
+};
+
+const DATA_PATH = "data";
+
+/* ================== MAP ================== */
+const map = L.map('map').setView([49, 32], 6);
+
+const layers = {
+  "OSM": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"),
+  "Satellite": L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+  ),
+  "Topographic": L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png")
+};
+layers.OSM.addTo(map);
+L.control.layers(layers).addTo(map);
+
+/* ================== DRAW ================== */
+const drawn = new L.FeatureGroup().addTo(map);
+
+const drawControl = new L.Control.Draw({
+  edit: { featureGroup: drawn },
+  draw: {
+    polygon:true,
+    polyline:true,
+    marker:true,
+    rectangle:false,
+    circle:false,
+    circlemarker:false
+  }
+});
+map.addControl(drawControl);
+
+/* ================== LOAD EXISTING ================== */
+fetch(`https://raw.githubusercontent.com/${GITHUB.owner}/${GITHUB.repo}/${GITHUB.branch}/${DATA_PATH}/mapData.json`)
+  .then(r => r.ok ? r.json() : null)
+  .then(data => {
+    if (!data) return;
+    L.geoJSON(data, {
+      onEachFeature: (f,l) => {
+        attachPopup(l, f.properties);
+        drawn.addLayer(l);
+      }
+    });
+  });
+
+/* ================== CREATE ================== */
+map.on(L.Draw.Event.CREATED, e => {
+  const layer = e.layer;
+  layer.feature = { type:"Feature", properties:{} };
+  attachPopup(layer, {});
+  drawn.addLayer(layer);
+});
+
+/* ================== POPUPS ================== */
+function attachPopup(layer, props) {
+  const html = `
+  <b>Назва</b><br>
+  <input id="t" value="${props.title||""}"><br>
+  <b>Опис</b><br>
+  <textarea id="d">${props.description||""}</textarea><br>
+  <b>Медіа URL</b><br>
+  <input id="m" value="${props.media||""}"><br>
+  <button onclick="savePopup(this)">OK</button>
+  `;
+  layer.bindPopup(html);
+}
+
+function savePopup(btn) {
+  const p = btn.closest(".leaflet-popup");
+  const l = p._source;
+  l.feature.properties = {
+    title: p.querySelector("#t").value,
+    description: p.querySelector("#d").value,
+    media: p.querySelector("#m").value
+  };
+  l.closePopup();
+}
+
+/* ================== PENCIL ================== */
+let pencil = false, pencilLayer = L.layerGroup().addTo(map), line=null;
+
+function togglePencil(){
+  pencil=!pencil;
+  if(!pencil){ pencilLayer.clearLayers(); map.off("mousedown mousemove mouseup"); return; }
+  map.on("mousedown",e=>line=L.polyline([e.latlng],{color:"red"}).addTo(pencilLayer));
+  map.on("mousemove",e=>line&&line.addLatLng(e.latlng));
+  map.on("mouseup",()=>line=null);
+}
+
+/* ================== SAVE & SYNC ================== */
+async function saveAndSync() {
+  if (!GITHUB.token) return alert("Нема GitHub token");
+
+  const geojson = drawn.toGeoJSON();
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(geojson,null,2))));
+
+  const date = new Date().toISOString().split("T")[0];
+  const files = [
+    `${DATA_PATH}/mapData.json`,
+    `${DATA_PATH}/mapData_${date}.json`
+  ];
+
+  for (const path of files) {
+    await commitFile(path, content, `Update map ${date}`);
+  }
+
+  alert("✅ Збережено. Користувач бачить оновлення.");
+}
+
+async function commitFile(path, content, message) {
+  const url = `https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/contents/${path}`;
+  let sha = null;
+
+  const r = await fetch(url, { headers:{Authorization:`token ${GITHUB.token}`}});
+  if (r.ok) sha = (await r.json()).sha;
+
+  await fetch(url,{
+    method:"PUT",
+    headers:{
+      Authorization:`token ${GITHUB.token}`,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({message,content,sha})
+  });
+}
+</script>
+</body>
+</html>
