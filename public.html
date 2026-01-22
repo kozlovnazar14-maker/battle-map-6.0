@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Battle Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+html, body, #map {
+  height: 100%;
+  margin: 0;
+}
+#topbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: white;
+  padding: 6px 10px;
+  box-shadow: 0 0 8px rgba(0,0,0,.3);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#infoBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+}
+#infoPanel {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  z-index: 1000;
+  background: white;
+  padding: 10px;
+  width: 300px;
+  max-height: 70%;
+  overflow: auto;
+  display: none;
+  box-shadow: 0 0 8px rgba(0,0,0,.3);
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <button onclick="prev()">◀</button>
+  <span id="date">—</span>
+  <button onclick="next()">▶</button>
+</div>
+
+<button id="infoBtn" onclick="toggleInfo()">ℹ Інформація</button>
+<div id="infoPanel"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+/* ================= CONFIG ================= */
+
+const OWNER = "YOUR_USERNAME";
+const REPO  = "admin-map";
+const BRANCH = "main";
+const DATA_PATH = "data";
+
+/* ================= MAP ================= */
+
+const map = L.map("map").setView([49, 32], 6);
+
+const layers = {
+  "OSM": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"),
+  "Satellite": L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+  ),
+  "Topographic": L.tileLayer(
+    "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+  )
+};
+
+layers.OSM.addTo(map);
+L.control.layers(layers).addTo(map);
+
+/* ================= DATA ================= */
+
+let files = [];
+let current = 0;
+let geoLayer = null;
+
+/* ================= LOAD FILE LIST ================= */
+
+async function loadIndex() {
+  const url = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${DATA_PATH}/index.json`;
+  const r = await fetch(url);
+
+  if (!r.ok) {
+    // fallback: тільки mapData.json
+    files = ["mapData.json"];
+    current = 0;
+    loadMap();
+    return;
+  }
+
+  const index = await r.json();
+  files = index.history;
+  current = files.length - 1;
+  loadMap();
+}
+
+/* ================= LOAD MAP ================= */
+
+async function loadMap() {
+  if (geoLayer) map.removeLayer(geoLayer);
+
+  const file = files[current];
+  document.getElementById("date").innerText = file.replace("mapData_","").replace(".json","");
+
+  const url = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${DATA_PATH}/${file}`;
+  const data = await (await fetch(url)).json();
+
+  geoLayer = L.geoJSON(data, {
+    onEachFeature: (f, l) => {
+      if (f.properties) {
+        let html = "";
+        if (f.properties.title) html += `<b>${f.properties.title}</b><br>`;
+        if (f.properties.description) html += `${f.properties.description}<br>`;
+        if (f.properties.media) {
+          html += `<img src="${f.properties.media}" style="max-width:100%">`;
+        }
+        if (html) l.bindPopup(html);
+      }
+    },
+    style: f => ({
+      color: f.properties?.color || "#ff0000",
+      weight: 2,
+      fillOpacity: 0.4
+    })
+  }).addTo(map);
+}
+
+/* ================= TIMELINE ================= */
+
+function prev() {
+  if (current > 0) {
+    current--;
+    loadMap();
+  }
+}
+
+function next() {
+  if (current < files.length - 1) {
+    current++;
+    loadMap();
+  }
+}
+
+/* ================= INFO ================= */
+
+async function toggleInfo() {
+  const panel = document.getElementById("infoPanel");
+
+  if (panel.style.display === "block") {
+    panel.style.display = "none";
+    return;
+  }
+
+  const url = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${DATA_PATH}/info.json`;
+  const r = await fetch(url);
+  if (r.ok) {
+    const info = await r.json();
+    panel.innerHTML = `<h3>${info.title || ""}</h3><p>${info.text || ""}</p>`;
+  } else {
+    panel.innerHTML = "Немає інформації";
+  }
+
+  panel.style.display = "block";
+}
+
+/* ================= INIT ================= */
+
+loadIndex();
+</script>
+
+</body>
+</html>
