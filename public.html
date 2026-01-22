@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Battle Map</title>
+<title>Battle Map Viewer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -57,7 +57,7 @@ html, body, #map {
   <button onclick="next()">▶</button>
 </div>
 
-<button id="infoBtn" onclick="toggleInfo()">ℹ Інформація</button>
+<button id="infoBtn" onclick="toggleInfo()">ℹ Info</button>
 <div id="infoPanel"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -65,8 +65,8 @@ html, body, #map {
 <script>
 /* ================= CONFIG ================= */
 
-const OWNER = "YOUR_USERNAME";
-const REPO  = "admin-map";
+const OWNER = "YOUR_USERNAME"; // replace with your GitHub username
+const REPO  = "admin-map";     // your repository name
 const BRANCH = "main";
 const DATA_PATH = "data";
 
@@ -96,11 +96,11 @@ let geoLayer = null;
 /* ================= LOAD FILE LIST ================= */
 
 async function loadIndex() {
+  // fallback to just mapData.json if index.json does not exist
   const url = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${DATA_PATH}/index.json`;
   const r = await fetch(url);
 
   if (!r.ok) {
-    // fallback: тільки mapData.json
     files = ["mapData.json"];
     current = 0;
     loadMap();
@@ -130,9 +130,7 @@ async function loadMap() {
         let html = "";
         if (f.properties.title) html += `<b>${f.properties.title}</b><br>`;
         if (f.properties.description) html += `${f.properties.description}<br>`;
-        if (f.properties.media) {
-          html += `<img src="${f.properties.media}" style="max-width:100%">`;
-        }
+        if (f.properties.media) html += `<img src="${f.properties.media}" style="max-width:100%">`;
         if (html) l.bindPopup(html);
       }
     },
@@ -176,7 +174,7 @@ async function toggleInfo() {
     const info = await r.json();
     panel.innerHTML = `<h3>${info.title || ""}</h3><p>${info.text || ""}</p>`;
   } else {
-    panel.innerHTML = "Немає інформації";
+    panel.innerHTML = "No information available";
   }
 
   panel.style.display = "block";
@@ -189,3 +187,4 @@ loadIndex();
 
 </body>
 </html>
+
